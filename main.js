@@ -36,10 +36,12 @@ function initialBoard() {
 	updateBoard();
 	color = 1;
 	updatePuttable(color);
+	message("");
+	thinking = false;
 }
 
-// クリック時の動作
-function onClick(e) {
+// 人間同士の対戦
+function PvP(e) {
 	var x = parseInt(e.layerX / SQUARE_SIZE);
 	var y = parseInt(e.layerY / SQUARE_SIZE);
 	if(puttable(x, y, color)) {
@@ -48,7 +50,6 @@ function onClick(e) {
 		updateBoard();
 		color *= -1
 		updatePuttable(color);
-		console.log(puttables);
 		if(puttables.length == 0) {
 			color *= -1;
 			updatePuttable(color);
@@ -59,6 +60,61 @@ function onClick(e) {
 	}
 }
 
+var thinking = false; // コンピュータが思考中であるフラグ
+
+// コンピュータと対戦
+function PvE(e) {
+	if(thinking == false) {
+		var x = parseInt(e.layerX / SQUARE_SIZE);
+		var y = parseInt(e.layerY / SQUARE_SIZE);
+		if(puttable(x, y, color)) {
+			putStone(x, y, color);
+			reverse(x, y, color);
+			updateBoard();
+			color *= -1
+			updatePuttable(color);
+			if(puttables.length == 0) {
+				color *= -1;
+				updatePuttable(color);
+				if(puttables.length == 0) {
+					finishGame();
+				}
+			} else {
+				thinking = true;
+				message("conputer thinking");
+				setTimeout(conputerThinking, 1);
+			}
+			
+		}
+	}
+}
+
+function conputerThinking() {
+	if(puttables.length == 0) {
+		finishGame();
+		return
+	}
+	var place = choiceBest(color, 3)[0];
+	putStone(place[0], place[1], color);
+	reverse(place[0], place[1], color);
+	color *= -1;
+	
+	updateBoard();
+	updatePuttable(color);
+	
+	thinking = false;
+	message("");
+				
+	if(puttables.length == 0) {
+		color *= -1;
+		updatePuttable(color);
+		thinking = true;
+		message("conputer thinking");
+		setTimeout(conputerThinking, 1);
+	}
+}
+
+	
 // ボードのグラフィックの更新
 function updateBoard() {
 	for(var x = 0; x < 8; x += 1) {
@@ -120,7 +176,6 @@ function reverse(x, y, color) {
 
 	function miniReverse(dx, dy) {
 		if (miniPuttable(x, y, dx, dy, color)) {
-			console.log(dx, dy);
 			for (var i = 1; get(x + dx * i, y + dy * i) * color == -1; i += 1) {
 				putStone(x + dx * i, y + dy * i, color);
 			}
@@ -187,6 +242,7 @@ function updatePuttable(color) {
 			}
 		}
 	}
+	return puttables
 }
 
 function finishGame() {
@@ -200,16 +256,110 @@ function finishGame() {
 			white += 1;
 		}
 	}
-	document.getElementById("finish").innerHTML = "ゲーム終了\n" + "黒: " + black + "\n白: " + white;
+	message("ゲーム終了\n" + "黒: " + black + "\n白: " + white);
 	
 }
-				
+
+function message(text) {
+	document.getElementById("finish").innerHTML = text;
+}
+
+// AI的な
+var importance = new Array(64);
+for (var i = 0; i < 64; i++) {
+	importance[i] = 1;
+}
+
+importance =
+	[64, 4, 16, 16, 16, 16, 4, 64,
+	 4, -32, 8,  8,  8,  8, -32, 4,
+	 16, 8, 32,  4,  4,  32, 8, 16,
+	 16, 8, 4,   4,  4,   4, 8, 16,
+	 16, 8, 4,   4,  4,   4, 8, 16,
+	 16, 8, 32,  4,  4,  32, 8, 16,
+	 4, -32, 8,  8,  8,  8, -32, 4,
+	 64, 4, 16, 16, 16, 16,  4, 64]
+
+function evalBoard(color, depth) {
+	if(depth < 1) {
+		var black = updatePuttable(1);
+		var white = updatePuttable(-1);
+
+		var score = (black.length - white.length) * color * 16
+		for(var i = 0; i < 64; i++) {
+			score += importance[i] * board[i]
+		}
+
+		return score
+	} else {
+		res = choiceBest(color * -1, depth - 1)[1];
+		return res * -1;
+	}
+}
+
+function choiceBest(color_cp, depth) {
+	// 現在のボードを保存
+	var board_return = board.concat();
+	var color_return = color_cp
+	var puttables_return = puttables.concat();
+
+	var puttables_temp = updatePuttable(color);
+
+	var best_score;
+	var best_place;
+
+	var len = puttables_temp.concat().length
+	for(var index = 0; index < len; index++) {
+		var place = puttables[index];
+		var x = place[0];
+		var y = place[1];
+
+		//仮置き
+		putStone(x, y, color_cp);
+		reverse(x, y, color_cp);
+		score_temp = evalBoard(color_cp, depth);
+
+		if(score_temp > best_score || best_score == undefined) {
+			best_score = score_temp;
+			best_place = [x, y];
+		}
+		board = board_return.concat();
+		puttables = puttables_temp.concat();
+
+	}
+
+
+	// もとの状態に戻す
+	board = board_return;
+	color_cp = color_return;
+
+	return [best_place, best_score]
+}
+
+
+function vsCP(color_p) {
+	initialBoard();
+	if(color_p == 1) {
+		c.removeEventListener("click", PvP);
+		c.addEventListener("click", PvE);
+	} else {
+		c.removeEventListener("click", PvP);
+		place = choiceBest(1, 0)[0];
+		putStone(place[0], place[1], 1);
+		reverse(place[0], place[1], 1);
+		updateBoard();
+		updatePuttable(-1);
+		color = -1;
+		c.addEventListener("click", PvE);
+		
+	}
 	
+}
 
 // 実行
 function main() {
 	initialBoard();
-	c.addEventListener("click", onClick);
+	c.addEventListener("click", PvP);
 }
 
 main();
