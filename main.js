@@ -61,6 +61,7 @@ function PvP(e) {
 }
 
 var thinking = false; // コンピュータが思考中であるフラグ
+var predicted_place; //プレイヤーが指すと予測した場所　実際に指した手と違った場合にimportanceを更新する
 
 // コンピュータと対戦
 function PvE(e) {
@@ -68,6 +69,9 @@ function PvE(e) {
 		var x = parseInt(e.layerX / SQUARE_SIZE);
 		var y = parseInt(e.layerY / SQUARE_SIZE);
 		if(puttable(x, y, color)) {
+			if(predicted_place[0] != x | predicted_place[1] != y) {
+				updateImportance();
+			}
 			putStone(x, y, color);
 			reverse(x, y, color);
 			updateBoard();
@@ -100,6 +104,11 @@ function conputerThinking() {
 	color *= -1;
 	
 	updateBoard();
+	updatePuttable(color);
+
+	// importanceの更新を導入してみる
+	predicted_place = choiceBest(color, 3)[0];
+	updateBoard(color);
 	updatePuttable(color);
 	
 	thinking = false;
@@ -265,31 +274,81 @@ function message(text) {
 }
 
 // AI的な
-var importance = new Array(64);
-for (var i = 0; i < 64; i++) {
+// Experiments with Multi-ProbCut and a New High-Quality Evaluation Function for Othelloに記載されている(らしい)Logistelloを参考にパターン作成
+// 大量の棋譜が必要となることが考えられるため、かなり単純な形に置き換える
+function makeArray(n) {
+	res = new Array(n);
+	for (var i = 0; i < n; i++) {
+		res[i] = 0
+	}
+
+	return res
+}
+
+var hor_vert1 = makeArray(81);
+var corner2x2 = makeArray(81);
+var ensemble = [1, 1, 1, 1, 1]
+
+/* 一番最初に作ったもの
+var importance = new Array(17);
+for (var i = 0; i < 17; i++) {
 	importance[i] = 1;
 }
 
 importance =
-	[64, 4, 16, 16, 16, 16, 4, 64,
-	 4, -32, 8,  8,  8,  8, -32, 4,
-	 16, 8, 32,  4,  4,  32, 8, 16,
-	 16, 8, 4,   4,  4,   4, 8, 16,
-	 16, 8, 4,   4,  4,   4, 8, 16,
-	 16, 8, 32,  4,  4,  32, 8, 16,
-	 4, -32, 8,  8,  8,  8, -32, 4,
-	 64, 4, 16, 16, 16, 16,  4, 64]
+	[64, 4, 16, 16,
+	 4, -32, 8,  8,
+	 16, 8, 32,  4,
+	 16, 8, 4,   4,
+	 16]
+*/
+function logistic(x) {
+	return 1 / (1 + Math.exp(-x))
+}
 
+// 盤面を評価する
 function evalBoard(color, depth) {
 	if(depth < 1) {
+		var score = 0;
+		var i
+		// hor_vert1
+		score += hor_vert1[(board[0] + 1) * 27 + (board[1] + 1) * 9 + (board[2] + 1) * 3 + (board[3] + 1)] * ensemble[0] * color
+		score += hor_vert1[(board[0 * 8] + 1) * 27 + (board[1 * 8] + 1) * 9 + (board[2 * 8] + 1) * 3 + (board[3 * 8] + 1)] * ensemble[0] * color
+		score += hor_vert1[(board[7] + 1) * 27 + (board[6] + 1) * 9 + (board[5] + 1) * 3 + (board[4] + 1)] * ensemble[0] * color
+		score += hor_vert1[(board[7 * 8] + 1) * 27 + (board[6 * 8] + 1) * 9 + (board[5 * 8] + 1) * 3 + (board[4 * 8] + 1)] * ensemble[0] * color
+		score += hor_vert1[(board[7 * 8 + 0] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[7 * 8 + 2] + 1) * 3 + (board[7 * 8 + 3] + 1)] * ensemble[0] * color
+		score += hor_vert1[(board[0 * 8 + 7] + 1) * 27 + (board[1 * 8 + 7] + 1) * 9 + (board[2 * 8 + 7] + 1) * 3 + (board[3 * 8 + 7] + 1)] * ensemble[0] * color
+		score += hor_vert1[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[7 * 8 + 5] + 1) * 3 + (board[7 * 8 + 4] + 1)] * ensemble[0] * color
+		score += hor_vert1[(board[7 * 8 + 7] + 1) * 27 + (board[6 * 8 + 7] + 1) * 9 + (board[5 * 8 + 7] + 1) * 3 + (board[4 * 8 + 7] + 1)] * ensemble[0] * color
+
+		// corner2x2
+		score += corner2x2[(board[0] + 1) * 27 + (board[1] + 1) * 9 + (board[1 * 8] + 1) * 3 + (board[1 * 8 + 1] + 1)] * ensemble[1] * color
+		score += corner2x2[(board[7] + 1) * 27 + (board[6] + 1) * 9 + (board[1 * 8 + 7] + 1) * 3 + (board[1 * 8 + 6] + 1)] * ensemble[1] * color
+		score += corner2x2[(board[7 * 8] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[6 * 8] + 1) * 3 + (board[6 * 8 + 1] + 1)] * ensemble[1] * color
+		score += corner2x2[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[6 * 8 + 7] + 1) * 3 + (board[6 * 8 + 6] + 1)] * ensemble[1] * color
+
+
+		// 置ける場所の数
 		var black = updatePuttable(1);
 		var white = updatePuttable(-1);
 
-		var score = (black.length - white.length) * color * 16
-		for(var i = 0; i < 64; i++) {
-			score += importance[i] * board[i]
-		}
+		score += (black.length - white.length) * ensemble[2] * color;
 
+		// 四隅
+		score += (board[0] + board[7] + board[7 * 8] + board[7 * 8 + 7]) * ensemble[3] * color;
+
+		// 石の合計数
+		stones = 0
+		for (var i = 0; i < 64; i++) {
+			stones += board[i];
+		}
+		score += stones * color * ensemble[4]
+
+		/* for(var x = 0; x < 4; x++) {
+			for(var y = 0; y < 4; y++) {
+				score += importance[x * 4 + y] * (board[x * 8 + y] +  board[x * 8 + (7 - y)] + board[(7 - x) * 8 + y] + board[(7 - x) * 8 + (7 - y)]) *	color;
+			}
+		} */
 		return score
 	} else {
 		res = choiceBest(color * -1, depth - 1)[1];
@@ -336,10 +395,99 @@ function choiceBest(color_cp, depth) {
 	return [best_place, best_score]
 }
 
+// importanceの更新を行う
+// 予測した手と、実際に指された手が違った場合に更新を行う
+// 指した手のスコアを足す
+function updateImportance() {
+	console.log("update");
+
+	// hor_vert1
+	hor_vert1[(board[0] + 1) * 27 + (board[1] + 1) * 9 + (board[2] + 1) * 3 + (board[3] + 1)] += 1;
+	hor_vert1[(board[0 * 8] + 1) * 27 + (board[1 * 8] + 1) * 9 + (board[2 * 8] + 1) * 3 + (board[3 * 8] + 1)] += 1;
+	hor_vert1[(board[7] + 1) * 27 + (board[6] + 1) * 9 + (board[5] + 1) * 3 + (board[4] + 1)] += 1;
+	hor_vert1[(board[7 * 8] + 1) * 27 + (board[6 * 8] + 1) * 9 + (board[5 * 8] + 1) * 3 + (board[4 * 8] + 1)] += 1;
+	hor_vert1[(board[7 * 8 + 0] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[7 * 8 + 2] + 1) * 3 + (board[7 * 8 + 3] + 1)] += 1;
+	hor_vert1[(board[0 * 8 + 7] + 1) * 27 + (board[1 * 8 + 7] + 1) * 9 + (board[2 * 8 + 7] + 1) * 3 + (board[3 * 8 + 7] + 1)] += 1;
+	hor_vert1[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[7 * 8 + 5] + 1) * 3 + (board[7 * 8 + 4] + 1)] += 1;
+	hor_vert1[(board[7 * 8 + 7] + 1) * 27 + (board[6 * 8 + 7] + 1) * 9 + (board[5 * 8 + 7] + 1) * 3 + (board[4 * 8 + 7] + 1)] += 1;
+
+
+	hor_vert1[(-board[0] + 1) * 27 + (-board[1] + 1) * 9 + (-board[2] + 1) * 3 + (-board[3] + 1)] -= 1;
+	hor_vert1[(-board[0 * 8] + 1) * 27 + (-board[1 * 8] + 1) * 9 + (-board[2 * 8] + 1) * 3 + (-board[3 * 8] + 1)] -= 1;
+	hor_vert1[(-board[7] + 1) * 27 + (-board[6] + 1) * 9 + (-board[5] + 1) * 3 + (-board[4] + 1)] -= 1;
+	hor_vert1[(-board[7 * 8] + 1) * 27 + (-board[6 * 8] + 1) * 9 + (-board[5 * 8] + 1) * 3 + (-board[4 * 8] + 1)] -= 1;
+	hor_vert1[(-board[7 * 8 + 0] + 1) * 27 + (-board[7 * 8 + 1] + 1) * 9 + (-board[7 * 8 + 2] + 1) * 3 + (-board[7 * 8 + 3] + 1)] -= 1;
+	hor_vert1[(-board[0 * 8 + 7] + 1) * 27 + (-board[1 * 8 + 7] + 1) * 9 + (-board[2 * 8 + 7] + 1) * 3 + (-board[3 * 8 + 7] + 1)] -= 1;
+	hor_vert1[(-board[7 * 8 + 7] + 1) * 27 + (-board[7 * 8 + 6] + 1) * 9 + (-board[7 * 8 + 5] + 1) * 3 + (-board[7 * 8 + 4] + 1)] -= 1;
+	hor_vert1[(-board[7 * 8 + 7] + 1) * 27 + (-board[6 * 8 + 7] + 1) * 9 + (-board[5 * 8 + 7] + 1) * 3 + (-board[4 * 8 + 7] + 1)] -= 1;
+
+	// corner2x2
+	corner2x2[(board[0] + 1) * 27 + (board[1] + 1) * 9 + (board[1 * 8] + 1) * 3 + (board[1 * 8 + 1] + 1)] += 1
+	corner2x2[(board[7] + 1) * 27 + (board[6] + 1) * 9 + (board[1 * 8 + 7] + 1) * 3 + (board[1 * 8 + 6] + 1)] += 1
+	corner2x2[(board[7 * 8] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[6 * 8] + 1) * 3 + (board[6 * 8 + 1] + 1)] += 1
+	corner2x2[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[6 * 8 + 7] + 1) * 3 + (board[6 * 8 + 6] + 1)] += 1
+
+	corner2x2[(-board[0] + 1) * 27 + (-board[1] + 1) * 9 + (-board[1 * 8] + 1) * 3 + (-board[1 * 8 + 1] + 1)] -= 1
+	corner2x2[(-board[7] + 1) * 27 + (-board[6] + 1) * 9 + (-board[1 * 8 + 7] + 1) * 3 + (-board[1 * 8 + 6] + 1)] -= 1
+	corner2x2[(-board[7 * 8] + 1) * 27 + (-board[7 * 8 + 1] + 1) * 9 + (-board[6 * 8] + 1) * 3 + (-board[6 * 8 + 1] + 1)] -= 1
+	corner2x2[(-board[7 * 8 + 7] + 1) * 27 + (-board[7 * 8 + 6] + 1) * 9 + (-board[6 * 8 + 7] + 1) * 3 + (-board[6 * 8 + 6] + 1)] -= 1
+	
+	var black = updatePuttable(1);
+	var white = updatePuttable(-1);
+
+	ensemble[2] += (black.length - white.length) * color
+	ensemble[3] += (board[0] + board[7] + board[7 * 8] + board[7 * 8 + 7]) * color
+	var stones = 0;
+	for(var i = 0; i < 64; i++) {
+		stones += board[i];
+	}
+	ensemble[4] += stones * color
+}
+
+
+/* 
+function updateImportance(x, y) {
+	console.log("update")
+
+	// 現在のボードを保存
+	var board_return = board.concat();
+
+	var len = puttables.length
+	for(var index = 0; index < len; index++) {
+		var x_temp = puttables[index][0];
+		var y_temp = puttables[index][1];
+		var weight;
+
+		if ((x == x_temp) & (y == y_temp)) {
+			weight = len - 1;
+		} else {
+			weight = -1;
+		}
+		putStone(x_temp, y_temp, color);
+		reverse(x_temp, y_temp, color);
+
+		// 更新
+
+		for (var xx = 0; xx < 4; xx++) {
+			for(var yy = 0; yy < 4; yy++) {
+				importance[xx * 4 + yy] += (board[xx * 8 + yy] + board[xx * 8 + (7 - yy)] + board[(7 - xx) * 8 + yy] + board[(7 - xx) * 8 + (7 - yy)]) * color * weight;
+			}
+		}
+		board = board_return.concat()
+	}
+	var black = updatePuttable(1);
+	var white = updatePuttable(-1);
+
+	importance[16] += (black.length - white.length) * color;
+} */
+
 
 function vsCP(color_p) {
 	initialBoard();
 	if(color_p == 1) {
+		predicted_place = choiceBest(color, 0)[0]
+		updateBoard();
+		updatePuttable(1)
 		c.removeEventListener("click", PvP);
 		c.addEventListener("click", PvE);
 	} else {
@@ -347,6 +495,7 @@ function vsCP(color_p) {
 		place = choiceBest(1, 0)[0];
 		putStone(place[0], place[1], 1);
 		reverse(place[0], place[1], 1);
+		predicted_place = choiceBest(-1, 0)[0]
 		updateBoard();
 		updatePuttable(-1);
 		color = -1;
