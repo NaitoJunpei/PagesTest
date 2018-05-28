@@ -13,6 +13,9 @@ var board = new Array(64); // ボード
 var color; // 現在の石の色
 var puttables; // 石を置ける位置の配列
 
+//棋譜を記録する
+var kifu = new Array();
+
 // 座標を指定して状態を取得
 function get(x, y) {
 	return board[x * 8 + y]
@@ -22,12 +25,13 @@ function boardClear() {
 	for(var i = 0; i < 64; i += 1) {
 		board[i] = 0;
 	}
-	updateBoard()
+	// updateBoard()
 }
 
 
 // ボードの初期化
 function initialBoard() {
+	kifu = [];
 	boardClear();
 	putStone(3, 3, 1);
 	putStone(3, 4, -1);
@@ -45,6 +49,7 @@ function PvP(e) {
 	var x = parseInt(e.layerX / SQUARE_SIZE);
 	var y = parseInt(e.layerY / SQUARE_SIZE);
 	if(puttable(x, y, color)) {
+		kifu.push([x, y, color]);
 		putStone(x, y, color);
 		reverse(x, y, color);
 		updateBoard();
@@ -61,7 +66,6 @@ function PvP(e) {
 }
 
 var thinking = false; // コンピュータが思考中であるフラグ
-var predicted_place; //プレイヤーが指すと予測した場所　実際に指した手と違った場合にimportanceを更新する
 
 // コンピュータと対戦
 function PvE(e) {
@@ -69,9 +73,10 @@ function PvE(e) {
 		var x = parseInt(e.layerX / SQUARE_SIZE);
 		var y = parseInt(e.layerY / SQUARE_SIZE);
 		if(puttable(x, y, color)) {
-			if(predicted_place[0] != x | predicted_place[1] != y) {
-				updateImportance();
-			}
+			kifu.push([x, y, color]);
+			// if(predicted_place[0] != x | predicted_place[1] != y) {
+			// 	updateImportance();
+			// }
 			putStone(x, y, color);
 			reverse(x, y, color);
 			updateBoard();
@@ -85,32 +90,33 @@ function PvE(e) {
 				}
 			} else {
 				thinking = true;
-				message("conputer thinking");
-				setTimeout(conputerThinking, 1);
+				message("computer thinking");
+				setTimeout(computerThinking, 1);
 			}
 			
 		}
 	}
 }
 
-function conputerThinking() {
+function computerThinking() {
 	if(puttables.length == 0) {
 		finishGame();
 		return
 	}
-	var place = choiceBest(color, 3)[0];
+	var place;
+	var value;
+	[place, value] = choiceBest(color, 3);
+	console.log(value);
 	putStone(place[0], place[1], color);
 	reverse(place[0], place[1], color);
+	kifu.push([place[0], place[1], color]);
 	color *= -1;
 	
 	updateBoard();
 	updatePuttable(color);
 
 	// importanceの更新を導入してみる
-	predicted_place = choiceBest(color, 3)[0];
-	updateBoard(color);
-	updatePuttable(color);
-	
+
 	thinking = false;
 	message("");
 				
@@ -118,8 +124,8 @@ function conputerThinking() {
 		color *= -1;
 		updatePuttable(color);
 		thinking = true;
-		message("conputer thinking");
-		setTimeout(conputerThinking, 1);
+		message("computer thinking");
+		setTimeout(computerThinking, 1);
 	}
 }
 
@@ -265,6 +271,7 @@ function finishGame() {
 			white += 1;
 		}
 	}
+	updateImportance(black - white);
 	message("ゲーム終了\n" + "黒: " + black + "\n白: " + white);
 	
 }
@@ -287,7 +294,8 @@ function makeArray(n) {
 
 var hor_vert1 = makeArray(81);
 var corner2x2 = makeArray(81);
-var ensemble = [1, 1, 1, 1, 1]
+var diag = makeArray(81);
+var ensemble = [1, 1, 1, 1, 1, 1]
 
 /* 一番最初に作ったもの
 var importance = new Array(17);
@@ -327,6 +335,11 @@ function evalBoard(color, depth) {
 		score += corner2x2[(board[7 * 8] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[6 * 8] + 1) * 3 + (board[6 * 8 + 1] + 1)] * ensemble[1] * color
 		score += corner2x2[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[6 * 8 + 7] + 1) * 3 + (board[6 * 8 + 6] + 1)] * ensemble[1] * color
 
+		// diag
+		score += diag[(board[0] + 1) * 27 + (board[1 * 8 + 1] + 1) * 9 + (board[2 * 8 + 2] + 1) * 3 + (board[3 * 8 + 3] + 1)] * ensemble[5] * color;
+		score += diag[(board[7] + 1) * 27 + (board[1 * 8 + 6] + 1) * 9 + (board[2 * 8 + 5] + 1) * 3 + (board[3 * 8 + 4] + 1)] * ensemble[5] * color;
+		score += diag[(board[7 * 8 + 7] + 1) * 27 + (board[6 * 8 + 6] + 1) * 9 + (board[5 * 8 + 5] + 1) * 3 + (board[4 * 8 + 4] + 1)] * ensemble[5] * color;
+		score += diag[(board[7 * 8] + 1) * 27 + (board[6 * 8 + 1] + 1) * 9 + (board[5 * 8 + 2] + 1) * 3 + (board[4 * 8 + 3] + 1)] * ensemble[5] * color;
 
 		// 置ける場所の数
 		var black = updatePuttable(1);
@@ -348,7 +361,15 @@ function evalBoard(color, depth) {
 			for(var y = 0; y < 4; y++) {
 				score += importance[x * 4 + y] * (board[x * 8 + y] +  board[x * 8 + (7 - y)] + board[(7 - x) * 8 + y] + board[(7 - x) * 8 + (7 - y)]) *	color;
 			}
-		} */
+			} */
+
+		if (score > 64) {
+			score = 64;
+		}
+		if (score < -64) {
+			score = -64;
+		}
+		
 		return score
 	} else {
 		res = choiceBest(color * -1, depth - 1)[1];
@@ -368,23 +389,27 @@ function choiceBest(color_cp, depth) {
 	var best_place;
 
 	var len = puttables_temp.concat().length
-	for(var index = 0; index < len; index++) {
-		var place = puttables[index];
-		var x = place[0];
-		var y = place[1];
+	if(len == 0) {
+		best_score = evalBoard(color_cp, depth);
+		best_place = [];
+	} else {
+		for(var index = 0; index < len; index++) {
+			var place = puttables[index];
+			var x = place[0];
+			var y = place[1];
 
-		//仮置き
-		putStone(x, y, color_cp);
-		reverse(x, y, color_cp);
-		score_temp = evalBoard(color_cp, depth);
-
-		if(score_temp > best_score || best_score == undefined) {
-			best_score = score_temp;
-			best_place = [x, y];
+			//仮置き
+			putStone(x, y, color_cp);
+			reverse(x, y, color_cp);
+			score_temp = evalBoard(color_cp, depth);
+			
+			if(score_temp > best_score || best_score == undefined) {
+				best_score = score_temp;
+				best_place = [x, y];
+			}
+			board = board_return.concat();
+			puttables = puttables_temp.concat();
 		}
-		board = board_return.concat();
-		puttables = puttables_temp.concat();
-
 	}
 
 
@@ -396,52 +421,108 @@ function choiceBest(color_cp, depth) {
 }
 
 // importanceの更新を行う
-// 予測した手と、実際に指された手が違った場合に更新を行う
-// 指した手のスコアを足す
-function updateImportance() {
+// 最終盤面のスコアを予測値とし、誤差逆伝播法で更新する
+
+function updateImportance(score) {
 	console.log("update");
-
-	// hor_vert1
-	hor_vert1[(board[0] + 1) * 27 + (board[1] + 1) * 9 + (board[2] + 1) * 3 + (board[3] + 1)] += 1;
-	hor_vert1[(board[0 * 8] + 1) * 27 + (board[1 * 8] + 1) * 9 + (board[2 * 8] + 1) * 3 + (board[3 * 8] + 1)] += 1;
-	hor_vert1[(board[7] + 1) * 27 + (board[6] + 1) * 9 + (board[5] + 1) * 3 + (board[4] + 1)] += 1;
-	hor_vert1[(board[7 * 8] + 1) * 27 + (board[6 * 8] + 1) * 9 + (board[5 * 8] + 1) * 3 + (board[4 * 8] + 1)] += 1;
-	hor_vert1[(board[7 * 8 + 0] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[7 * 8 + 2] + 1) * 3 + (board[7 * 8 + 3] + 1)] += 1;
-	hor_vert1[(board[0 * 8 + 7] + 1) * 27 + (board[1 * 8 + 7] + 1) * 9 + (board[2 * 8 + 7] + 1) * 3 + (board[3 * 8 + 7] + 1)] += 1;
-	hor_vert1[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[7 * 8 + 5] + 1) * 3 + (board[7 * 8 + 4] + 1)] += 1;
-	hor_vert1[(board[7 * 8 + 7] + 1) * 27 + (board[6 * 8 + 7] + 1) * 9 + (board[5 * 8 + 7] + 1) * 3 + (board[4 * 8 + 7] + 1)] += 1;
-
-
-	hor_vert1[(-board[0] + 1) * 27 + (-board[1] + 1) * 9 + (-board[2] + 1) * 3 + (-board[3] + 1)] -= 1;
-	hor_vert1[(-board[0 * 8] + 1) * 27 + (-board[1 * 8] + 1) * 9 + (-board[2 * 8] + 1) * 3 + (-board[3 * 8] + 1)] -= 1;
-	hor_vert1[(-board[7] + 1) * 27 + (-board[6] + 1) * 9 + (-board[5] + 1) * 3 + (-board[4] + 1)] -= 1;
-	hor_vert1[(-board[7 * 8] + 1) * 27 + (-board[6 * 8] + 1) * 9 + (-board[5 * 8] + 1) * 3 + (-board[4 * 8] + 1)] -= 1;
-	hor_vert1[(-board[7 * 8 + 0] + 1) * 27 + (-board[7 * 8 + 1] + 1) * 9 + (-board[7 * 8 + 2] + 1) * 3 + (-board[7 * 8 + 3] + 1)] -= 1;
-	hor_vert1[(-board[0 * 8 + 7] + 1) * 27 + (-board[1 * 8 + 7] + 1) * 9 + (-board[2 * 8 + 7] + 1) * 3 + (-board[3 * 8 + 7] + 1)] -= 1;
-	hor_vert1[(-board[7 * 8 + 7] + 1) * 27 + (-board[7 * 8 + 6] + 1) * 9 + (-board[7 * 8 + 5] + 1) * 3 + (-board[7 * 8 + 4] + 1)] -= 1;
-	hor_vert1[(-board[7 * 8 + 7] + 1) * 27 + (-board[6 * 8 + 7] + 1) * 9 + (-board[5 * 8 + 7] + 1) * 3 + (-board[4 * 8 + 7] + 1)] -= 1;
-
-	// corner2x2
-	corner2x2[(board[0] + 1) * 27 + (board[1] + 1) * 9 + (board[1 * 8] + 1) * 3 + (board[1 * 8 + 1] + 1)] += 1
-	corner2x2[(board[7] + 1) * 27 + (board[6] + 1) * 9 + (board[1 * 8 + 7] + 1) * 3 + (board[1 * 8 + 6] + 1)] += 1
-	corner2x2[(board[7 * 8] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[6 * 8] + 1) * 3 + (board[6 * 8 + 1] + 1)] += 1
-	corner2x2[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[6 * 8 + 7] + 1) * 3 + (board[6 * 8 + 6] + 1)] += 1
-
-	corner2x2[(-board[0] + 1) * 27 + (-board[1] + 1) * 9 + (-board[1 * 8] + 1) * 3 + (-board[1 * 8 + 1] + 1)] -= 1
-	corner2x2[(-board[7] + 1) * 27 + (-board[6] + 1) * 9 + (-board[1 * 8 + 7] + 1) * 3 + (-board[1 * 8 + 6] + 1)] -= 1
-	corner2x2[(-board[7 * 8] + 1) * 27 + (-board[7 * 8 + 1] + 1) * 9 + (-board[6 * 8] + 1) * 3 + (-board[6 * 8 + 1] + 1)] -= 1
-	corner2x2[(-board[7 * 8 + 7] + 1) * 27 + (-board[7 * 8 + 6] + 1) * 9 + (-board[6 * 8 + 7] + 1) * 3 + (-board[6 * 8 + 6] + 1)] -= 1
+	epsilon = 0.001; //学習係数
+	boardClear();
+	putStone(3, 3, 1);
+	putStone(3, 4, -1);
+	putStone(4, 3, -1);
+	putStone(4, 4, 1);
 	
-	var black = updatePuttable(1);
-	var white = updatePuttable(-1);
+	for(var i = 0; i < kifu.length; i++) {
+		var x, y;
+		[x, y, color] = kifu[i];
+		putStone(x, y, color);
+		reverse(x, y, color);
+		var temp_score = evalBoard(1, 0);
+		var error = temp_score - score;
+		console.log(temp_score, score);
 
-	ensemble[2] += (black.length - white.length) * color
-	ensemble[3] += (board[0] + board[7] + board[7 * 8] + board[7 * 8 + 7]) * color
-	var stones = 0;
-	for(var i = 0; i < 64; i++) {
-		stones += board[i];
+		var score_hov = 0;
+		score_hov += hor_vert1[(board[0] + 1) * 27 + (board[1] + 1) * 9 + (board[2] + 1) * 3 + (board[3] + 1)]
+		score_hov += hor_vert1[(board[0 * 8] + 1) * 27 + (board[1 * 8] + 1) * 9 + (board[2 * 8] + 1) * 3 + (board[3 * 8] + 1)]
+		score_hov += hor_vert1[(board[7] + 1) * 27 + (board[6] + 1) * 9 + (board[5] + 1) * 3 + (board[4] + 1)]
+		score_hov += hor_vert1[(board[7 * 8] + 1) * 27 + (board[6 * 8] + 1) * 9 + (board[5 * 8] + 1) * 3 + (board[4 * 8] + 1)]
+		score_hov += hor_vert1[(board[7 * 8 + 0] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[7 * 8 + 2] + 1) * 3 + (board[7 * 8 + 3] + 1)]
+		score_hov += hor_vert1[(board[0 * 8 + 7] + 1) * 27 + (board[1 * 8 + 7] + 1) * 9 + (board[2 * 8 + 7] + 1) * 3 + (board[3 * 8 + 7] + 1)]
+		score_hov += hor_vert1[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[7 * 8 + 5] + 1) * 3 + (board[7 * 8 + 4] + 1)]
+		score_hov += hor_vert1[(board[7 * 8 + 7] + 1) * 27 + (board[6 * 8 + 7] + 1) * 9 + (board[5 * 8 + 7] + 1) * 3 + (board[4 * 8 + 7] + 1)]
+
+		var score_corner2x2 = 0;
+		score_corner2x2 += corner2x2[(board[0] + 1) * 27 + (board[1] + 1) * 9 + (board[1 * 8] + 1) * 3 + (board[1 * 8 + 1] + 1)]
+		score_corner2x2 += corner2x2[(board[7] + 1) * 27 + (board[6] + 1) * 9 + (board[1 * 8 + 7] + 1) * 3 + (board[1 * 8 + 6] + 1)]
+		score_corner2x2 += corner2x2[(board[7 * 8] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[6 * 8] + 1) * 3 + (board[6 * 8 + 1] + 1)]
+		score_corner2x2 += corner2x2[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[6 * 8 + 7] + 1) * 3 + (board[6 * 8 + 6] + 1)]
+
+		var score_diag = 0;
+		score_diag += diag[(board[0] + 1) * 27 + (board[1 * 8 + 1] + 1) * 9 + (board[2 * 8 + 2] + 1) * 3 + (board[3 * 8 + 3] + 1)]
+		score_diag += diag[(board[7] + 1) * 27 + (board[1 * 8 + 6] + 1) * 9 + (board[2 * 8 + 5] + 1) * 3 + (board[3 * 8 + 4] + 1)]
+		score_diag += diag[(board[7 * 8 + 7] + 1) * 27 + (board[6 * 8 + 6] + 1) * 9 + (board[5 * 8 + 5] + 1) * 3 + (board[4 * 8 + 4] + 1)]
+		score_diag += diag[(board[7 * 8] + 1) * 27 + (board[6 * 8 + 1] + 1) * 9 + (board[5 * 8 + 2] + 1) * 3 + (board[4 * 8 + 3] + 1)]
+		
+
+		// hor_vert1
+		hor_vert1[(board[0] + 1) * 27 + (board[1] + 1) * 9 + (board[2] + 1) * 3 + (board[3] + 1)] -= error * ensemble[0] * epsilon;
+		hor_vert1[(board[0 * 8] + 1) * 27 + (board[1 * 8] + 1) * 9 + (board[2 * 8] + 1) * 3 + (board[3 * 8] + 1)] -= error * ensemble[0] * epsilon;
+		hor_vert1[(board[7] + 1) * 27 + (board[6] + 1) * 9 + (board[5] + 1) * 3 + (board[4] + 1)] -= error * ensemble[0] * epsilon;
+		hor_vert1[(board[7 * 8] + 1) * 27 + (board[6 * 8] + 1) * 9 + (board[5 * 8] + 1) * 3 + (board[4 * 8] + 1)] -= error * ensemble[0] * epsilon;
+		hor_vert1[(board[7 * 8 + 0] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[7 * 8 + 2] + 1) * 3 + (board[7 * 8 + 3] + 1)] -= error * ensemble[0] * epsilon;
+		hor_vert1[(board[0 * 8 + 7] + 1) * 27 + (board[1 * 8 + 7] + 1) * 9 + (board[2 * 8 + 7] + 1) * 3 + (board[3 * 8 + 7] + 1)] -= error * ensemble[0] * epsilon;
+		hor_vert1[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[7 * 8 + 5] + 1) * 3 + (board[7 * 8 + 4] + 1)] -= error * ensemble[0] * epsilon;
+		hor_vert1[(board[7 * 8 + 7] + 1) * 27 + (board[6 * 8 + 7] + 1) * 9 + (board[5 * 8 + 7] + 1) * 3 + (board[4 * 8 + 7] + 1)] -= error * ensemble[0] * epsilon;
+
+
+		hor_vert1[(-board[0] + 1) * 27 + (-board[1] + 1) * 9 + (-board[2] + 1) * 3 + (-board[3] + 1)] += error * ensemble[0] * epsilon;
+		hor_vert1[(-board[0 * 8] + 1) * 27 + (-board[1 * 8] + 1) * 9 + (-board[2 * 8] + 1) * 3 + (-board[3 * 8] + 1)] += error * ensemble[0] * epsilon;
+		hor_vert1[(-board[7] + 1) * 27 + (-board[6] + 1) * 9 + (-board[5] + 1) * 3 + (-board[4] + 1)] += error * ensemble[0] * epsilon;
+		hor_vert1[(-board[7 * 8] + 1) * 27 + (-board[6 * 8] + 1) * 9 + (-board[5 * 8] + 1) * 3 + (-board[4 * 8] + 1)] += error * ensemble[0] * epsilon;
+		hor_vert1[(-board[7 * 8 + 0] + 1) * 27 + (-board[7 * 8 + 1] + 1) * 9 + (-board[7 * 8 + 2] + 1) * 3 + (-board[7 * 8 + 3] + 1)] += error * ensemble[0] * epsilon;
+		hor_vert1[(-board[0 * 8 + 7] + 1) * 27 + (-board[1 * 8 + 7] + 1) * 9 + (-board[2 * 8 + 7] + 1) * 3 + (-board[3 * 8 + 7] + 1)] += error * ensemble[0] * epsilon;
+		hor_vert1[(-board[7 * 8 + 7] + 1) * 27 + (-board[7 * 8 + 6] + 1) * 9 + (-board[7 * 8 + 5] + 1) * 3 + (-board[7 * 8 + 4] + 1)] += error * ensemble[0] * epsilon;
+		hor_vert1[(-board[7 * 8 + 7] + 1) * 27 + (-board[6 * 8 + 7] + 1) * 9 + (-board[5 * 8 + 7] + 1) * 3 + (-board[4 * 8 + 7] + 1)] += error * ensemble[0] * epsilon;
+
+		// corner2x2
+		corner2x2[(board[0] + 1) * 27 + (board[1] + 1) * 9 + (board[1 * 8] + 1) * 3 + (board[1 * 8 + 1] + 1)] -= error * ensemble[1] * epsilon;
+		corner2x2[(board[7] + 1) * 27 + (board[6] + 1) * 9 + (board[1 * 8 + 7] + 1) * 3 + (board[1 * 8 + 6] + 1)] -= error * ensemble[1] * epsilon;
+		corner2x2[(board[7 * 8] + 1) * 27 + (board[7 * 8 + 1] + 1) * 9 + (board[6 * 8] + 1) * 3 + (board[6 * 8 + 1] + 1)] -= error * ensemble[1] * epsilon;
+		corner2x2[(board[7 * 8 + 7] + 1) * 27 + (board[7 * 8 + 6] + 1) * 9 + (board[6 * 8 + 7] + 1) * 3 + (board[6 * 8 + 6] + 1)] -= error * ensemble[1] * epsilon;
+
+		corner2x2[(-board[0] + 1) * 27 + (-board[1] + 1) * 9 + (-board[1 * 8] + 1) * 3 + (-board[1 * 8 + 1] + 1)] += error * ensemble[1] * epsilon;
+		corner2x2[(-board[7] + 1) * 27 + (-board[6] + 1) * 9 + (-board[1 * 8 + 7] + 1) * 3 + (-board[1 * 8 + 6] + 1)] += error * ensemble[1] * epsilon;
+		corner2x2[(-board[7 * 8] + 1) * 27 + (-board[7 * 8 + 1] + 1) * 9 + (-board[6 * 8] + 1) * 3 + (-board[6 * 8 + 1] + 1)] += error * ensemble[1] * epsilon;
+		corner2x2[(-board[7 * 8 + 7] + 1) * 27 + (-board[7 * 8 + 6] + 1) * 9 + (-board[6 * 8 + 7] + 1) * 3 + (-board[6 * 8 + 6] + 1)] += error * ensemble[1] * epsilon;
+
+		// diag
+		diag[(board[0] + 1) * 27 + (board[1 * 8 + 1] + 1) * 9 + (board[2 * 8 + 2] + 1) * 3 + (board[3 * 8 + 3] + 1)] -= error * ensemble[5] * epsilon;
+		diag[(board[7] + 1) * 27 + (board[1 * 8 + 6] + 1) * 9 + (board[2 * 8 + 5] + 1) * 3 + (board[3 * 8 + 4] + 1)] -= error * ensemble[5] * epsilon;
+		diag[(board[7 * 8 + 7] + 1) * 27 + (board[6 * 8 + 6] + 1) * 9 + (board[5 * 8 + 5] + 1) * 3 + (board[4 * 8 + 4] + 1)] -= error * ensemble[5] * epsilon;
+		diag[(board[7 * 8] + 1) * 27 + (board[6 * 8 + 1] + 1) * 9 + (board[5 * 8 + 2] + 1) * 3 + (board[4 * 8 + 3] + 1)] -= error * ensemble[5] * epsilon;
+		
+		diag[(-board[0] + 1) * 27 + (-board[1 * 8 + 1] + 1) * 9 + (-board[2 * 8 + 2] + 1) * 3 + (-board[3 * 8 + 3] + 1)] += error * ensemble[5] * epsilon;
+		diag[(-board[7] + 1) * 27 + (-board[1 * 8 + 6] + 1) * 9 + (-board[2 * 8 + 5] + 1) * 3 + (-board[3 * 8 + 4] + 1)] += error * ensemble[5] * epsilon;
+		diag[(-board[7 * 8 + 7] + 1) * 27 + (-board[6 * 8 + 6] + 1) * 9 + (-board[5 * 8 + 5] + 1) * 3 + (-board[4 * 8 + 4] + 1)] += error * ensemble[5] * epsilon;
+		diag[(-board[7 * 8] + 1) * 27 + (-board[6 * 8 + 1] + 1) * 9 + (-board[5 * 8 + 2] + 1) * 3 + (-board[4 * 8 + 3] + 1)] += error * ensemble[5] * epsilon;
+	
+		ensemble[0] -= error * epsilon * score_hov;
+		ensemble[1] -= error * epsilon * score_corner2x2;
+		ensemlbe[5] -= error * epsilon * score_diag;
+
+		var black = updatePuttable(1);
+		var white = updatePuttable(-1);
+
+		ensemble[2] -= error * epsilon * (black.length - white.length);
+		ensemble[3] -= error * epsilon * (board[0] + board[7] + board[7 * 8] + board[7 * 8 + 7]); 
+		var stones = 0;
+		for(var j = 0; j < 64; j++) {
+			stones += board[j];
+		}
+		ensemble[4] -= error * epsilon * stones;
+
 	}
-	ensemble[4] += stones * color
+	updateBoard();
 }
 
 
@@ -485,7 +566,6 @@ function updateImportance(x, y) {
 function vsCP(color_p) {
 	initialBoard();
 	if(color_p == 1) {
-		predicted_place = choiceBest(color, 0)[0]
 		updateBoard();
 		updatePuttable(1)
 		c.removeEventListener("click", PvP);
@@ -495,7 +575,7 @@ function vsCP(color_p) {
 		place = choiceBest(1, 0)[0];
 		putStone(place[0], place[1], 1);
 		reverse(place[0], place[1], 1);
-		predicted_place = choiceBest(-1, 0)[0]
+		kifu.push([place[0], place[1], 1]);
 		updateBoard();
 		updatePuttable(-1);
 		color = -1;
@@ -503,6 +583,12 @@ function vsCP(color_p) {
 		
 	}
 	
+}
+
+function vsP() {
+	initialBoard()
+	c.removeEventListener("click", PvE);
+	c.addEventListener("click", PvP);
 }
 
 // 実行
