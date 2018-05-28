@@ -272,6 +272,7 @@ function finishGame() {
 		}
 	}
 	updateImportance(black - white);
+	making_kifu = false;
 	message("ゲーム終了\n" + "黒: " + black + "\n白: " + white);
 	
 }
@@ -508,7 +509,7 @@ function updateImportance(score) {
 	
 		ensemble[0] -= error * epsilon * score_hov;
 		ensemble[1] -= error * epsilon * score_corner2x2;
-		ensemlbe[5] -= error * epsilon * score_diag;
+		ensemble[5] -= error * epsilon * score_diag;
 
 		var black = updatePuttable(1);
 		var white = updatePuttable(-1);
@@ -589,6 +590,20 @@ function vsP() {
 	initialBoard()
 	c.removeEventListener("click", PvE);
 	c.addEventListener("click", PvP);
+}
+
+// コンピュータ同士の対戦
+// n回繰り返し、棋譜を生成する
+var making_kifu = false
+function makeKifu(n) {
+	c.removeEventListener("click", PvE);
+	c.removeEventListener("click", PvP);
+	making_kifu = true;
+	initialBoard()
+	while(making_kifu) {
+		computerThinking();
+	}
+	setTimeout(makeKifu(n-1), 10);
 }
 
 // 実行
